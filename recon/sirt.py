@@ -58,7 +58,7 @@ class SIRT(object):
             self.projections = projections
         
         if self.ground_truth is not None:
-            #self.ground_truth = self.ground_truth.ravel()
+            self.ground_truth = self.ground_truth.ravel()
             norm_factor = np.linalg.norm(self.ground_truth)
         else:
             norm_factor = np.linalg.norm(self.projections)
@@ -68,12 +68,13 @@ class SIRT(object):
         rms_error = np.zeros((niter,))
         convergence = np.zeros((niter,))
         t_start = time.time()
+        self.rec = self.rec.ravel()
         while k < niter and not stop:
             res = self.f_proj_obj.forward_project(self.rec)
             res = self.projections - res
             back_proj = self.f_proj_obj.back_project(self.W * res)
             
-            self.rec += np.reshape(self.V * back_proj, self.geometry.vox_shape, order='F')
+            self.rec += self.V * back_proj
             if positivity:
                 self.rec[self.rec < 0.] = 0.
             
@@ -85,10 +86,11 @@ class SIRT(object):
             
             if k > 0 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
-                print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f'
-                      % (k, rms_error[k]))
+                if self.my_rank == 0:
+                    print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f'
+                            % (k, rms_error[k]))
             
-            if k > 0 and k % 20 == 0:
+            if k > 0 and k % 20 == 0 and self.my_rank==0:
                 print('time taken for 20 SIRT iterations = %4.5f' % (time.time() - t_start))
                 t_start = time.time()
             
@@ -99,7 +101,7 @@ class SIRT(object):
                     fig, (ax0, ax1, ax2) = plt.subplots(3, 1)
                 
                 elif k % 20 == 0:
-                    ax0.imshow(self.rec[:, :, self.geometry.vox_shape[2] // 2])
+                    ax0.imshow(np.reshape(self.rec, self.geometry.vox_shape)[:, :, self.geometry.vox_shape[2] // 2])
                     ax0.set_title('SIRT iteration %3d' % (k))
                     
                     ax1.cla()
@@ -119,7 +121,7 @@ class SIRT(object):
     
     def run_tikhonov_gd(self, niter=100, reg_param=1.0, positivity=False, make_plot=False, projections=None):
         """
-        Solve x* = argmin_x 0.5*|Ax - b\^2 + 0.5*lambda * |x|^2
+        Solve x* = argmin_x 0.5*|Ax - b|^2 + 0.5*lambda * |x|^2
         using gradient descent with simple line search
         :param niter: maximum number of iterations
         :param reg_param: regularization parameter
@@ -144,6 +146,7 @@ class SIRT(object):
         k = 0
         rms_error = np.zeros((niter,))
         convergence = np.zeros((niter,))
+        self.rec = self.rec.ravel()
         while k < niter and not stop:
             # gradient = - At(b - Ax_tilde) + reg_parm * x_tilde, where x_tilde is rec after positivity
             # compute back-projection: At(b - Ax)
@@ -175,16 +178,18 @@ class SIRT(object):
             
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
-                print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f' % (k, rms_error[k]))
+                if self.my_rank == 0:
+                    print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f' 
+                            % (k, rms_error[k]))
             
-            if make_plot:
+            if make_plot and self.my_rank == 0:
                 if k == 0:
                     import matplotlib.pyplot as plt
                     plt.ion()
                     fig, (ax0, ax1, ax2) = plt.subplots(3, 1)
                 
                 elif k % 10 == 0:
-                    ax0.imshow(self.rec.reshape(self.geometry.vox_shape)[:, :, self.geometry.vox_shape[2] // 2])
+                    ax0.imshow(np.reshape(self.rec, self.geometry.vox_shape)[:, :, self.geometry.vox_shape[2] // 2])
                     ax0.set_title('Tikhonov iteration %3d' % k)
                     
                     ax1.cla()
@@ -199,7 +204,7 @@ class SIRT(object):
                     plt.pause(0.1)
             k += 1
         
-        return self.rec.reshape(self.geometry.vox_shape), rms_error[:k]
+        return self.rec, rms_error[:k]
     
     def run_lasso_ista(self, niter=100, reg_param=1.0, alpha0=1.0, beta=0.5, make_plot=False, projections=None):
         """
@@ -233,12 +238,13 @@ class SIRT(object):
         rms_error = np.zeros((niter,))
         convergence = np.zeros((niter,))
         step_size = np.zeros(niter, )
+        self.rec = self.rec.ravel()
         while k < niter and not stop:
             # gradient of fidelity term = - At(b - Ax_tilde)
             # compute back-projection: At(b - Ax)
-            res = sparse.csr_matrix.dot(self.proj_mat, self.rec)
-            res = res.reshape(self.n_proj, -1) - self.projections
-            grad = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel())
+            res = self.f_proj_obj.forward_project(self.rec)
+            res = res - self.projections
+            grad = self.f_proj_obj.back_project(res)
             
             # backtracking linesearch for proximal gradient descent
             _, alpha, success = self._backtrack_lasso(alpha0, beta, res, grad, reg_param)
@@ -260,7 +266,7 @@ class SIRT(object):
                 stop = 1
                 print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f' % (k, rms_error[k]))
             
-            if make_plot:
+            if make_plot and self.my_rank == 0:
                 if k == 0:
                     import matplotlib.pyplot as plt
                     plt.ion()
@@ -294,10 +300,10 @@ class SIRT(object):
             xp = _soft_thresholding(self.rec - t * dg0, t * _lambda)
             Gt = self.rec - xp
             
-            g = sparse.csr_matrix.dot(self.proj_mat, xp) - self.projections.ravel()
+            g = self.f_proj_obj.forward_project(xp) - self.projections
             g = 0.5 * np.linalg.norm(g) ** 2
             gp = g0 - np.dot(dg0.T, Gt) + (0.5 / t) * np.linalg.norm(Gt) ** 2
-            print(t, g, gp)
+            # print(t, g, gp)
             if g <= gp:
                 return xp, t, True
             else:
@@ -336,14 +342,14 @@ class SIRT(object):
         rms_error = np.zeros((niter,))
         convergence = np.zeros((niter,))
         
+        self.rec = self.rec.ravel()
         x_0 = np.zeros_like(self.rec)
         x_1 = np.zeros_like(self.rec)
         while k < niter and not stop:
             # gradient of fidelity term = - At(b - Ax_tilde)
             # compute back-projection: At(b - Ax)
-            res = sparse.csr_matrix.dot(self.proj_mat, self.rec)
-            res = res.reshape(self.n_proj, -1) - self.projections
-            grad = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel())
+            res = self.f_proj_obj.forward_project(self.rec) - self.projections
+            grad = self.f_proj_obj.back_project(res)
             
             # backtracking linesearch for proximal gradient descent
             _, alpha, success = self._backtrack_lasso(alpha0, beta, res, grad, reg_param)
@@ -366,9 +372,11 @@ class SIRT(object):
             
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
-                print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f' % (k, rms_error[k]))
+                if self.my_rank == 0:
+                    print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f'
+                          % (k, rms_error[k]))
             
-            if make_plot:
+            if make_plot and self.my_rank == 0:
                 if k == 0:
                     import matplotlib.pyplot as plt
                     plt.ion()
@@ -390,7 +398,7 @@ class SIRT(object):
                     plt.pause(0.1)
             k += 1
         
-        return self.rec.reshape(self.geometry.vox_shape), rms_error[:k]
+        return self.rec, rms_error[:k]
 
 
 def my_tikh_f(x, f_proj_obj, b, _lambda):
@@ -406,7 +414,7 @@ def my_tikh_fp(x, f_proj_obj, b, _lambda):
     
     res = f_proj_obj.forward_project(x) - b
     grad = f_proj_obj.back_project(res) + _lambda * x
-    
+
     return grad
 
 

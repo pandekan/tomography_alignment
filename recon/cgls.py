@@ -40,7 +40,7 @@ class CGLS(object):
         self.f_proj_obj._setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
     
         self._r = self.projections - self.f_proj_obj.forward_project(self.rec)
-        self._p = np.reshape(self.f_proj_obj.back_project(self._r), self.geometry.vox_shape, order='F')
+        self._p = self.f_proj_obj.back_project(self._r)
         if self.my_rank == 0:
             print(self._r.shape)
             print(self._p.shape)
@@ -52,6 +52,7 @@ class CGLS(object):
         if self.ground_truth is None:
             norm_factor = np.linalg.norm(self.projections)
         else:
+            self.ground_truth = self.ground_truth.ravel()
             norm_factor = np.linalg.norm(self.ground_truth)
             
         stop = 0
@@ -59,6 +60,7 @@ class CGLS(object):
         conv = np.zeros((niter, ))
         self.rms_error = np.zeros((niter, ))
         reinit_iter = 0
+        self.rec = self.rec.ravel()
         while not stop and k < niter:
             r = self.f_proj_obj.forward_project(self._p)
             
@@ -68,9 +70,11 @@ class CGLS(object):
             
             if k > 0 and conv[k] > conv[k-1]:
                 # re-initialize only if we did not re-initialize in the previous iteration
-                print('reinitializing at iteration %d' %k)
+                if self.my_rank == 0:
+                    print('reinitializing at iteration %d' %k)
                 if reinit_iter + 1 == k:
-                    print('need to re-initialize at two consecutive iterations: quitting')
+                    if self.my_rank == 0:
+                        print('need to re-initialize at two consecutive iterations: quitting')
                     return self.rec, self.rms_error[:k]
                 self.rec -= alpha * self._p
                 self._initialize()
@@ -85,7 +89,7 @@ class CGLS(object):
             
             # update gamma and p
             self._gamma = gamma
-            self._p = np.reshape(p, self.geometry.vox_shape, order='F') + beta * self._p
+            self._p = p + beta * self._p
             if self.ground_truth is None:
                 self.rms_error[k] = np.linalg.norm(self._r)/norm_factor
             else:
@@ -98,8 +102,8 @@ class CGLS(object):
                     fig, (ax0, ax1, ax2) = plt.subplots(3, 1)
 
                 elif k % 20 == 0:
-                    ax0.imshow(self.rec[:, :, self.geometry.vox_shape[2] // 2])
-                    ax0.set_title('SIRT iteration %3d' % (k))
+                    ax0.imshow(np.reshape(self.rec, self.geometry.vox_shape)[:, :, self.geometry.vox_shape[2] // 2])
+                    ax0.set_title('CGLS iteration %3d' % (k))
     
                     ax1.cla()
                     ax1.set_title('Root Mean-Squared Error')

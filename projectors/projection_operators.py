@@ -3,7 +3,7 @@ from scipy import sparse
 import sys
 from projectors.ray_tracing import forward_sparse as ray_forward_sparse
 from projectors.ray_tracing import forward_proj_grad as ray_forward_proj_grad
-from src import forward_projection, back_projection, projection_gradient
+from src import forward_projection, back_projection
 from mpi4py import MPI
 
 
@@ -79,6 +79,7 @@ class ForwardProjection(object):
                 # if using method 'linop' we parallelize along rays
                 split_index = np.array_split(np.arange(self.n_rays), self.size)
                 my_rays = split_index[self.my_rank]
+                self.my_rays = my_rays
                 self.my_n_proj = self.n_proj
                 self.my_phi, self.my_alpha, self.my_beta = self.phi, self.alpha, self.beta
                 self.my_xyz_shifts = self.xyz_shifts
@@ -109,7 +110,7 @@ class ForwardProjection(object):
             
     def forward_project(self, rec):
         
-        rec = rec.astype(self.precision)
+        rec = rec.ravel().astype(self.precision)
         if self.method == 'matrix':
             f_proj = self._forward_matrix(rec)
         else:
@@ -123,7 +124,7 @@ class ForwardProjection(object):
             self._sparse_projection_matrix()
             
         if self.comm is None:
-            f_proj = sparse.csr_matrix.dot(self.pmat, np.ravel(rec, order='F'))
+            f_proj = sparse.csr_matrix.dot(self.pmat, rec)
         else:
             if self.precision == np.float64:
                 mpi_precision = MPI.DOUBLE
@@ -131,12 +132,10 @@ class ForwardProjection(object):
                 mpi_precision = MPI.FLOAT
 
             if self.my_n_proj > 0:
-                my_proj = sparse.csr_matrix.dot(self.pmat, rec.ravel()) #np.ravel(rec, order='F'))
+                my_proj = sparse.csr_matrix.dot(self.pmat, rec)
             
                 # now gather my_proj and dump into f_proj
                 f_proj = np.zeros((self.n_proj * self.geometry.n_det, ), dtype=self.precision)
-                #self.comm.Gatherv(np.ascontiguousarray(np.ravel(my_proj, order='F')),
-                #                  [f_proj, self.counts, self.displacements, MPI.DOUBLE], root=0)
                 self.comm.Gatherv(np.ascontiguousarray(my_proj), 
                                   [f_proj, self.counts, self.displacements, mpi_precision], root=0)
             else:
@@ -175,35 +174,42 @@ class ForwardProjection(object):
             self.pmat = sparse.coo_matrix((weights, (detector_inds, data_inds)),
                                           shape=(self.my_n_proj * self.geometry.n_det, self.geometry.n_vox),
                                           dtype=self.precision)
-            self.pmat = sparse.csr_matrix(self.pmat)
+            self.pmat = sparse.csr_matrix(self.pmat, dtype=self.precision)
             
     def _forward_linop(self, rec):
         nx, ny, nz = self.geometry.vox_shape
-    
+        n_vox = self.geometry.n_vox 
         if self.comm is None:
             f_proj = forward_projection.forward_project(self.alpha, self.beta, self.phi, self.xyz_shifts.T,
                                                         self.geometry.cor_shift.T,
                                                         self.geometry.source_centers, self.geometry.det_centers,
                                                         self.geometry.vox_origin, self.geometry.step_size,
-                                                        rec, self.n_proj, self.geometry.n_det, nx, ny, nz)
+                                                        nx, ny, nz, rec, self.n_proj, self.geometry.n_det, n_vox)
         else:
+            pp = np.zeros((self.n_proj, self.geometry.n_det), dtype=np.float32)
+            f_proj = np.zeros((self.n_proj, self.geometry.n_det), dtype=np.float32)
             if np.size(self.my_alpha) > 0 and self.my_source_centers.shape[1] > 0:
                 my_proj = forward_projection.forward_project(self.my_alpha, self.my_beta, self.my_phi,
                                                              self.my_xyz_shifts.T, self.my_cor_shift.T,
                                                              self.my_source_centers, self.my_det_centers,
                                                              self.geometry.vox_origin, self.geometry.step_size,
-                                                             rec, self.my_n_proj, self.my_n_rays, nx, ny, nz)
+                                                             nx, ny, nz, rec, self.my_n_proj, self.my_n_rays, n_vox)
             
-                f_proj = np.zeros((self.n_proj * self.geometry.n_det,), dtype=np.float32)
-                self.comm.Gatherv(np.ascontiguousarray(np.ravel(my_proj, order='F')),
-                                  [f_proj, self.counts, self.displacements, MPI.FLOAT], root=0)
-            else:
-                f_proj = None
-        
+                #f_proj = np.zeros((self.n_proj * self.geometry.n_det,), dtype=np.float32)
+                #self.comm.Gatherv(np.ascontiguousarray(np.ravel(my_proj, order='F')),
+                #                  [f_proj, self.counts, self.displacements, MPI.FLOAT], root=0)
+                pp[:, self.my_rays] = my_proj
+            #else:
+                #f_proj = None
+                 
             self.comm.Barrier()
-            f_proj = self.comm.bcast(f_proj, root=0)
+            #f_proj = self.comm.bcast(f_proj, root=0)
+            self.comm.Allreduce([pp, MPI.FLOAT], [f_proj, MPI.FLOAT], op=MPI.SUM)
         # this will be consistent with the result for method 'matrix'
-        f_proj = np.reshape(f_proj, (self.n_proj, self.geometry.det_shape[0], self.geometry.det_shape[1]), order='F')
+        #f_proj = np.reshape(f_proj, (self.n_proj, self.geometry.det_shape[0], self.geometry.det_shape[1]), order='F')
+        #f_proj = np.transpose(f_proj, (0, 2, 1))
+        f_proj = np.reshape(f_proj, (self.n_proj, self.geometry.det_shape[0], self.geometry.det_shape[1]))
+        f_proj = np.transpose(f_proj, (0, 2, 1))
     
         return f_proj
 
@@ -244,6 +250,8 @@ class ForwardProjection(object):
                                                   np.asfortranarray(projections), self.n_proj, self.geometry.n_vox,
                                                   self.geometry.det_shape[0], self.geometry.det_shape[1])
         else:
+            b_proj = np.zeros((self.geometry.n_vox,), dtype=np.float32)
+            bb = np.zeros_like(b_proj)
             if self.my_n_vox > 0:
                 my_b_proj = back_projection.back_project(-self.my_alpha, -self.my_beta, -self.my_phi, 
                                                          -self.my_xyz_shifts.T,
@@ -251,14 +259,15 @@ class ForwardProjection(object):
                                                          np.asfortranarray(projections),
                                                          self.my_n_proj, self.my_n_vox,
                                                          self.geometry.det_shape[0], self.geometry.det_shape[1])
-                b_proj = np.zeros((self.geometry.n_vox,), dtype=np.float32)
-                self.comm.Gatherv(np.ascontiguousarray(my_b_proj),
-                                  [b_proj, self.vox_counts, self.vox_displacements, MPI.FLOAT], root=0)
-            else:
-                b_proj = None
+                #b_proj = np.zeros((self.geometry.n_vox,), dtype=np.float32)
+                #self.comm.Gatherv(np.ascontiguousarray(my_b_proj),
+                #                  [b_proj, self.vox_counts, self.vox_displacements, MPI.FLOAT], root=0)
+                bb[self.my_centers] = my_b_proj
+            #else:
+            #    b_proj = None
 
-            b_proj = self.comm.bcast(b_proj, root=0)
-    
+            #b_proj = self.comm.bcast(b_proj, root=0)
+            self.comm.Allreduce([bb, MPI.FLOAT], [b_proj, MPI.FLOAT], op=MPI.SUM)
         return b_proj
 
     #def projection_gradient(self, rec, alpha, beta, phi, xyz_shift, cor_shift):
@@ -279,93 +288,7 @@ class ForwardProjection(object):
     #
     #    return proj_img.ravel(), gradient.reshape(6, -1)
 
- 
-class ProjectionGradient(object):
     
-    def __init__(self, geometry, precision=np.float32, comm=None):
-        
-        self.geometry = geometry
-        self.precision = precision
-        self.n_proj = self.geometry.n_proj
-        self.n_rays = self.geometry.n_det
-        self.comm = comm
-        if self.comm is None:
-            self.size = 1
-            self.my_rank = 0
-        else:
-            self.size = self.comm.Get_size()
-            self.my_rank = self.comm.Get_rank()
-        
-        self.phi = None
-        self.alpha = None
-        self.beta = None
-        self.xyz_shifts = None
-
-    def _setup(self):
-    
-        self.geometry.cor_shift = self.geometry.cor_shift.astype(np.float32, copy=False)
-        self.geometry.source_centers = self.geometry.source_centers.astype(np.float32, copy=False)
-        self.geometry.det_centers = self.geometry.det_centers.astype(np.float32, copy=False)
-        self.geometry.vox_origin = self.geometry.vox_origin.astype(np.float32, copy=False)
-        self.geometry.vox_centers = self.geometry.vox_centers.astype(np.float32, copy=False)
-        self.geometry.step_size = np.float32(self.geometry.step_size)
-        
-        if self.comm is not None:
-            split_rays = np.array_split(np.arange(self.n_rays), self.size)
-            self.my_rays = split_rays[self.my_rank]
-            self.my_source_centers = self.geometry.source_centers[:, self.my_rays]
-            self.my_det_centers = self.geometry.det_centers[:, self.my_rays]
-            self.my_n_rays = np.size(self.my_rays)
-            self.counts = np.array([split_rays[i] for i in range(self.size)])
-        else:
-            self.my_rays = np.arange(self.n_rays)
-            self.my_source_centers = self.geometry.source_centers
-            self.my_det_centers = self.geometry.det_centers
-            self.my_n_rays = self.n_rays
-    
-    def proj_gradient(self, alpha, beta, phi, xyz_shift, cor_shift, recon):
-        
-        nx, ny, nz = self.geometry.vox_shape
-        if self.my_n_rays > 0:
-            det_image, det_gradient = projection_gradient.compute_projection_gradient(alpha, beta, phi, xyz_shift,
-                                                                                      cor_shift, self.my_source_centers,
-                                                                                      self.my_det_centers,
-                                                                                      self.geometry.vox_origin,
-                                                                                      self.geometry.step_size,
-                                                                                      recon, self.my_n_rays,
-                                                                                      nx, ny, nz)
-        else:
-            det_image = None
-            det_gradient = None
-            
-        if self.comm is not None:
-            
-            if det_image is not None:
-                f_proj = np.zeros((self.geometry.n_det,), dtype=np.float32)
-                displacements = np.insert(np.cumsum(self.counts, 0, 0))[0:-1]
-                self.comm.Gatherv(np.ascontiguousarray(det_image),
-                                  [f_proj, self.counts, displacements, MPI.FLOAT], root=0)
-            else:
-                f_proj = None
-            self.comm.Barrier()
-            f_proj = self.comm.bcast(f_proj, root=0)
-            
-            if det_gradient is not None:
-                fp_proj = np.zeros((6*self.geometry.n_det, ), dtype=np.float32)
-                displacements = np.insert(np.cumsum(6*self.counts, 0, 0))[0:-1]
-                self.comm.Gatherv(np.ascontiguousarray(np.ravel(det_gradient, order='F')),
-                                  [fp_proj, self.counts, displacements, MPI.FLOAT], root=0)
-            else:
-                fp_proj = None
-            self.comm.Barrier()
-            fp_proj = self.comm.bcast(fp_proj, root=0)
-        else:
-            f_proj = det_image
-            fp_proj = det_gradient
-        
-        return f_proj, fp_proj
-
-        
 def _rank_order(image):
     
     flat_image = image.ravel()

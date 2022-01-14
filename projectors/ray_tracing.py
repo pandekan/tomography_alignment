@@ -1,6 +1,11 @@
+# ------------------------------------------------
+# Copyright 2021 Kanupriya Pande
+# Contact kpande@lbl.gov
+# ------------------------------------------------
+
 import numpy as np
 from utilities.rotations import rot_x, rot_y, rot_z, der_rot_x, der_rot_y, der_rot_z
-from src_sp import ray_wt_grad
+from src import ray_wt_grad
 
 
 def transform_points(x, alpha, beta, phi, t):

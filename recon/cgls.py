@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Copyright 2021 Kanupriya Pande
+# Contact kpande@lbl.gov
+# ------------------------------------------------
+
 import numpy as np
 from projectors import projection_operators
 
@@ -25,22 +30,21 @@ class CGLS(object):
             self.rec = np.zeros(self.geometry.vox_shape, dtype=self.precision)
         self.projections = self.projections.astype(self.precision, copy=False)
         self.voxel_mask = options['voxel_mask'] if 'voxel_mask' in options else None
-        self.f_proj_obj = None
+        self.proj_obj = None
     
         self._initialize()
         
     def _initialize(self):
     
-        if self.f_proj_obj is None:
+        if self.proj_obj is None:
             # create an instance of the projection operator
-            self.f_proj_obj = projection_operators.ForwardProjection(self.geometry, method=self.method,
-                                                                     precision=self.precision,
-                                                                     comm=self.comm)
+            self.proj_obj = projection_operators.Projection(self.geometry, method=self.method,
+                                                            precision=self.precision, comm=self.comm)
     
-        self.f_proj_obj._setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
+        self.proj_obj._setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
     
-        self._r = self.projections - self.f_proj_obj.forward_project(self.rec)
-        self._p = self.f_proj_obj.back_project(self._r)
+        self._r = self.projections - self.proj_obj.forward_project(self.rec)
+        self._p = self.proj_obj.back_project(self._r)
         if self.my_rank == 0:
             print(self._r.shape)
             print(self._p.shape)
@@ -62,11 +66,11 @@ class CGLS(object):
         reinit_iter = 0
         self.rec = self.rec.ravel()
         while not stop and k < niter:
-            r = self.f_proj_obj.forward_project(self._p)
+            r = self.proj_obj.forward_project(self._p)
             
             alpha = self._gamma/np.linalg.norm(r)**2
             self.rec += alpha * self._p
-            conv[k] = np.linalg.norm(self.projections - self.f_proj_obj.forward_project(self.rec))
+            conv[k] = np.linalg.norm(self.projections - self.proj_obj.forward_project(self.rec))
             
             if k > 0 and conv[k] > conv[k-1]:
                 # re-initialize only if we did not re-initialize in the previous iteration
@@ -82,7 +86,7 @@ class CGLS(object):
             
             self._r -= alpha * r
             # now back-project
-            p = self.f_proj_obj.back_project(self._r)
+            p = self.proj_obj.back_project(self._r)
             
             gamma = np.linalg.norm(p)**2
             beta = gamma/self._gamma

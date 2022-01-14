@@ -3,6 +3,7 @@ Module for generating shepp-logan phantom and
 phantom with arbitrary number of ellipsoids with arbitrary parameters.
 
 Most of these modules are from tomopy by Gursoy et al.
+https://tomopy.readthedocs.io/en/latest/about.html
 """
 
 from __future__ import (absolute_import, division, print_function,

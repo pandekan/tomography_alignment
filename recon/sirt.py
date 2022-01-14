@@ -1,5 +1,9 @@
+# ------------------------------------------------
+# Copyright 2021 Kanupriya Pande
+# Contact kpande@lbl.gov
+# ------------------------------------------------
+
 import numpy as np
-from scipy import sparse
 from scipy import optimize
 import time
 from projectors import projection_operators
@@ -28,24 +32,23 @@ class SIRT(object):
             self.rec = np.zeros(self.geometry.vox_shape, dtype=self.precision)
         self.projections = self.projections.astype(self.precision, copy=False)
         self.voxel_mask = options['voxel_mask'] if 'voxel_mask' in options else None
-        self.f_proj_obj = None
+        self.proj_obj = None
         
         self._initialize()
     
     def _initialize(self):
         
-        if self.f_proj_obj is None:
+        if self.proj_obj is None:
             # create an instance of the projection operator
-            self.f_proj_obj = projection_operators.ForwardProjection(self.geometry, method=self.method,
-                                                                     precision=self.precision,
-                                                                     comm=self.comm)
+            self.proj_obj = projection_operators.Projection(self.geometry, method=self.method,
+                                                            precision=self.precision, comm=self.comm)
             
-        self.f_proj_obj._setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
+        self.proj_obj._setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
         
         # compute normalizing matrices
-        self.W = self.f_proj_obj.forward_project(np.asfortranarray(np.ones(self.geometry.vox_shape,
-                                                                           dtype=self.precision)))
-        self.V = self.f_proj_obj.back_project(np.ones_like(self.projections))
+        self.W = self.proj_obj.forward_project(np.asfortranarray(np.ones(self.geometry.vox_shape,
+                                                                         dtype=self.precision)))
+        self.V = self.proj_obj.back_project(np.ones_like(self.projections))
         
         self.V[self.V == 0.] = np.inf
         self.W[self.W == 0.] = np.inf
@@ -70,9 +73,9 @@ class SIRT(object):
         t_start = time.time()
         self.rec = self.rec.ravel()
         while k < niter and not stop:
-            res = self.f_proj_obj.forward_project(self.rec)
+            res = self.proj_obj.forward_project(self.rec)
             res = self.projections - res
-            back_proj = self.f_proj_obj.back_project(self.W * res)
+            back_proj = self.proj_obj.back_project(self.W * res)
             
             self.rec += self.V * back_proj
             if positivity:
@@ -151,14 +154,14 @@ class SIRT(object):
             # gradient = - At(b - Ax_tilde) + reg_parm * x_tilde, where x_tilde is rec after positivity
             # compute back-projection: At(b - Ax)
             
-            res = self.projections - self.f_proj_obj.forward_project(self.rec)
-            grad = self.f_proj_obj.back_project(res)  # At (b - Ax)
+            res = self.projections - self.proj_obj.forward_project(self.rec)
+            grad = self.proj_obj.back_project(res)  # At (b - Ax)
             
             grad = -grad + reg_param * self.rec  # At(Ax-b) + reg_param * Lt L x
             
             # find step length using line search
             line_out = optimize.line_search(my_tikh_f, my_tikh_fp, self.rec, -grad,
-                                            args=(self.f_proj_obj, self.projections, reg_param))
+                                            args=(self.proj_obj, self.projections, reg_param))
             alpha = line_out[0]
             if alpha is None:
                 alpha = 1.e-3
@@ -242,9 +245,9 @@ class SIRT(object):
         while k < niter and not stop:
             # gradient of fidelity term = - At(b - Ax_tilde)
             # compute back-projection: At(b - Ax)
-            res = self.f_proj_obj.forward_project(self.rec)
+            res = self.proj_obj.forward_project(self.rec)
             res = res - self.projections
-            grad = self.f_proj_obj.back_project(res)
+            grad = self.proj_obj.back_project(res)
             
             # backtracking linesearch for proximal gradient descent
             _, alpha, success = self._backtrack_lasso(alpha0, beta, res, grad, reg_param)
@@ -300,7 +303,7 @@ class SIRT(object):
             xp = _soft_thresholding(self.rec - t * dg0, t * _lambda)
             Gt = self.rec - xp
             
-            g = self.f_proj_obj.forward_project(xp) - self.projections
+            g = self.proj_obj.forward_project(xp) - self.projections
             g = 0.5 * np.linalg.norm(g) ** 2
             gp = g0 - np.dot(dg0.T, Gt) + (0.5 / t) * np.linalg.norm(Gt) ** 2
             # print(t, g, gp)
@@ -348,8 +351,8 @@ class SIRT(object):
         while k < niter and not stop:
             # gradient of fidelity term = - At(b - Ax_tilde)
             # compute back-projection: At(b - Ax)
-            res = self.f_proj_obj.forward_project(self.rec) - self.projections
-            grad = self.f_proj_obj.back_project(res)
+            res = self.proj_obj.forward_project(self.rec) - self.projections
+            grad = self.proj_obj.back_project(res)
             
             # backtracking linesearch for proximal gradient descent
             _, alpha, success = self._backtrack_lasso(alpha0, beta, res, grad, reg_param)
@@ -401,19 +404,19 @@ class SIRT(object):
         return self.rec, rms_error[:k]
 
 
-def my_tikh_f(x, f_proj_obj, b, _lambda):
+def my_tikh_f(x, proj_obj, b, _lambda):
     
-    res = f_proj_obj.forward_project(x) - b
+    res = proj_obj.forward_project(x) - b
     
     res = 0.5 * np.linalg.norm(res) ** 2 + 0.5 * _lambda * np.linalg.norm(x) ** 2
     
     return res
 
 
-def my_tikh_fp(x, f_proj_obj, b, _lambda):
+def my_tikh_fp(x, proj_obj, b, _lambda):
     
-    res = f_proj_obj.forward_project(x) - b
-    grad = f_proj_obj.back_project(res) + _lambda * x
+    res = proj_obj.forward_project(x) - b
+    grad = proj_obj.back_project(res) + _lambda * x
 
     return grad
 

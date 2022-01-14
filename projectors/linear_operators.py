@@ -1,5 +1,10 @@
+# ------------------------------------------------
+# Copyright 2021 Kanupriya Pande
+# Contact kpande@lbl.gov
+# ------------------------------------------------
+
 import numpy as np
-import forward_projection, back_projection
+from src import forward_projection, back_projection
 from mpi4py import MPI
 
 
@@ -158,7 +163,7 @@ class BackProjection(object):
     def orientation_setup(self, angles=None, xyz_shifts=None):
     
         if angles is None:
-            self.phi = np.linspace(0.0, np.pi, self.n_proj)x`
+            self.phi = np.linspace(0.0, np.pi, self.n_proj)
             self.alpha = np.zeros(self.n_proj, )
             self.beta = np.zeros(self.n_proj, )
         else:

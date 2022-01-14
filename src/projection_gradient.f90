@@ -1,11 +1,11 @@
-subroutine compute_projection_gradient(alpha, beta, phi, xyz, cor_shift, source_points, detector_points, origin, &
-                                       step_size, recon, n_rays, nx, ny, nz, ax, dax)
+subroutine compute_gradient(alpha, beta, phi, xyz, cor_shift, source_points, detector_points, origin, &
+        step_size, nx, ny, nz, recon, n_rays, n_vox, ax, dax)
     
     implicit none
     
-    integer(kind=4),                         intent(in)  :: n_rays, nx, ny, nz
+    integer(kind=4),                         intent(in)  :: n_rays, nx, ny, nz, n_vox
     real(kind=4),                            intent(in)  :: alpha, beta, phi
-    real(kind=4), dimension(nx, ny, nz),     intent(in)  :: recon
+    real(kind=4), dimension(n_vox),          intent(in)  :: recon
     real(kind=4), dimension(3),              intent(in)  :: xyz, cor_shift
     real(kind=4), dimension(3, n_rays),      intent(in)  :: source_points, detector_points
     real(kind=4), dimension(3),              intent(in)  :: origin
@@ -69,8 +69,7 @@ subroutine compute_projection_gradient(alpha, beta, phi, xyz, cor_shift, source_
     call rigid_transformation_der(s, x0, alpha, beta, phi, xyz, n_rays, der, append_der)
     
     ! compute forward projection and its derivative wrt angles and translations
-    call ray_forward_der_trilinear(points_on_ray, n_rays, n_on_ray, nx, ny, nz, reshape(recon, (/nx*ny*nz/)), &
-            step, der, append_der, ax, dax)
+    call ray_forward_der_trilinear(points_on_ray, n_rays, n_on_ray, nx, ny, nz, recon, step, der, append_der, ax, dax)
     !ax = a_temp
     !dax = d_temp
     

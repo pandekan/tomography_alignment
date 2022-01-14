@@ -1,13 +1,18 @@
+# ------------------------------------------------
+# Copyright 2021 Kanupriya Pande
+# Contact kpande@lbl.gov
+# ------------------------------------------------
+
 import numpy as np
 from scipy import sparse
-import sys
 from projectors.ray_tracing import forward_sparse as ray_forward_sparse
 from projectors.ray_tracing import forward_proj_grad as ray_forward_proj_grad
 from src import forward_projection, back_projection
+from src import projection_gradient
 from mpi4py import MPI
 
 
-class ForwardProjection(object):
+class Projection(object):
 
     def __init__(self, geometry, method='linop', precision=np.float32, comm=None):
         
@@ -142,9 +147,9 @@ class ForwardProjection(object):
                 f_proj = None
             self.comm.Barrier()
             f_proj = self.comm.bcast(f_proj, root=0)
-        # the following two steps will give the same result as what we get if we use method 'linop'
+        
         f_proj = np.reshape(f_proj, (self.n_proj, self.geometry.det_shape[0], self.geometry.det_shape[1]))
-        #f_proj = np.transpose(f_proj, (0, 2, 1))
+        
         return f_proj
 
     def _sparse_projection_matrix(self):
@@ -206,8 +211,6 @@ class ForwardProjection(object):
             #f_proj = self.comm.bcast(f_proj, root=0)
             self.comm.Allreduce([pp, MPI.FLOAT], [f_proj, MPI.FLOAT], op=MPI.SUM)
         # this will be consistent with the result for method 'matrix'
-        #f_proj = np.reshape(f_proj, (self.n_proj, self.geometry.det_shape[0], self.geometry.det_shape[1]), order='F')
-        #f_proj = np.transpose(f_proj, (0, 2, 1))
         f_proj = np.reshape(f_proj, (self.n_proj, self.geometry.det_shape[0], self.geometry.det_shape[1]))
         f_proj = np.transpose(f_proj, (0, 2, 1))
     
@@ -270,23 +273,69 @@ class ForwardProjection(object):
             self.comm.Allreduce([bb, MPI.FLOAT], [b_proj, MPI.FLOAT], op=MPI.SUM)
         return b_proj
 
-    #def projection_gradient(self, rec, alpha, beta, phi, xyz_shift, cor_shift):
-    #
-    #    this_geo = deepcopy(self.geometry)
-    #    this_geo.cor_shift = cor_shift
-    #
-    #    if self.method == 'voxel':
-    #        proj_img, gradient = vox_forward_proj_grad(this_geo, alpha, beta, phi, xyz_shift, rec)
-    #    elif self.method == 'ray':
-    #        proj_img, gradient = ray_forward_proj_grad(this_geo, alpha, beta, phi, xyz_shift, rec)
-    #    else:
-    #        print('projection-gradient method not implements')
-    #        sys.exit()
-    #
-    #    proj_img = proj_img.astype(self.precision, copy=False)
-    #    gradient = gradient.astype(self.precision, copy=False)
-    #
-    #    return proj_img.ravel(), gradient.reshape(6, -1)
+
+class ProjectionGradient(object):
+    
+    def __init__(self, geometry, precision=np.float32, comm=None):
+        
+        self.geometry = geometry
+        self.precision = precision
+        self.n_rays = self.geometry.n_det
+        self.comm = comm
+        if self.comm is None:
+            self.size = 1
+            self.my_rank = 0
+        else:
+            self.size = self.comm.Get_size()
+            self.my_rank = self.comm.Get_rank()
+
+        self.geometry.source_centers = self.geometry.source_centers.astype(np.float32, copy=False)
+        self.geometry.det_centers = self.geometry.det_centers.astype(np.float32, copy=False)
+        self.geometry.vox_origin = self.geometry.vox_origin.astype(np.float32, copy=False)
+        self.geometry.vox_centers = self.geometry.vox_centers.astype(np.float32, copy=False)
+        self.geometry.step_size = np.float32(self.geometry.step_size)
+
+        if self.comm is not None:
+            # parallelize along rays
+            split_index = np.array_split(np.arange(self.n_rays), self.size)
+            my_rays = split_index[self.my_rank]
+            self.my_rays = my_rays
+            self.my_source_centers = self.geometry.source_centers[:, my_rays]
+            self.my_det_centers = self.geometry.det_centers[:, my_rays]
+            self.my_n_rays = np.size(my_rays)
+            self.counts = np.array([np.size(split_index[i]) for i in range(self.size)])
+            self.displacements = np.insert(np.cumsum(self.counts), 0, 0)[0:-1]
+        else:
+            self.my_source_centers = self.geometry.source_centers
+            self.my_det_centers = self.geometry.det_centers
+            self.my_n_rays = self.n_rays
+            self.my_vox_centers = self.geometry.vox_centers
+            self.my_n_vox = self.geometry.n_vox
+    
+    def proj_gradient(self, recon, alpha, beta, phi, xyz_shift, cor_shift):
+        
+        nx, ny, nz = self.geometry.vox_shape
+        p_image, p_gradient = projection_gradient.compute_gradient(alpha, beta, phi, xyz_shift, cor_shift,
+                                                                   self.my_source_centers, self.my_det_centers,
+                                                                   self.geometry.vox_origin, self.geometry.step_size,
+                                                                   nx, ny, nz, recon, self.my_n_rays,
+                                                                   self.geometry.n_vox)
+        if self.comm is None:
+            return p_image, p_gradient
+        else:
+            f_temp = np.zeros((self.geometry.n_det, ), dtype=np.float32)
+            fp_temp = np.zeros((6, self.geometry.n_det), dtype=np.float32)
+            f_proj = np.zeros((self.geometry.n_det, ), dtype=np.float32)
+            fp_proj = np.zeros((6, self.geometry.n_rays, ), dtype=np.float32)
+            if self.my_n_rays > 0:
+                f_temp[self.my_rays] = p_image
+                fp_temp[:, self.my_rays] = p_gradient
+            
+            self.comm.Allreduce([f_temp, MPI.FLOAT], [f_proj, MPI.FLOAT], op=MPI.SUM)
+            self.comm.Allreduce([fp_temp, MPI.FLOAT], [fp_proj, MPI.FLOAT], op=MPI.SUM)
+        
+        self.comm.Barrier()
+        return f_proj, fp_proj
 
     
 def _rank_order(image):

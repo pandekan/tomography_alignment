@@ -34,7 +34,7 @@ class Projection(object):
         self.beta = None
         self.xyz_shifts = None
 
-    def _setup(self, angles=None, xyz_shifts=None):
+    def setup(self, angles=None, xyz_shifts=None):
     
         if angles is None:
             self.phi = np.linspace(0.0, np.pi, self.n_proj)

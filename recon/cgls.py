@@ -41,7 +41,8 @@ class CGLS(object):
             self.proj_obj = projection_operators.Projection(self.geometry, method=self.method,
                                                             precision=self.precision, comm=self.comm)
     
-        self.proj_obj._setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
+        # experimental setup
+        self.proj_obj.setup(angles=self.angles, xyz_shifts=self.xyz_shifts)
     
         self._r = self.projections - self.proj_obj.forward_project(self.rec)
         self._p = self.proj_obj.back_project(self._r)

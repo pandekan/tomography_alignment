@@ -76,4 +76,4 @@ subroutine compute_gradient(alpha, beta, phi, xyz, cor_shift, source_points, det
     deallocate( points_on_ray )
     deallocate( step )
 
-end subroutine compute_projection_gradient
+end subroutine compute_gradient

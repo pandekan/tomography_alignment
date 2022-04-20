@@ -29,7 +29,7 @@ end subroutine rigid_transformation
 
 subroutine rigid_transformation_der(x, x0, a, b, p, t, npoints, der, append_der)
     
-    use rotation_module
+    use rotations_module
     implicit none
     integer(kind=4),                        intent(in)  :: npoints
     real(kind=4), dimension(3, npoints),    intent(in)  :: x

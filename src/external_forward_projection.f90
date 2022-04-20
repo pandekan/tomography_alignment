@@ -171,6 +171,8 @@ subroutine ray_forward_der_trilinear(points_on_ray, n_rays, n_points, nx, ny, nz
     real(kind=4),    dimension(n_rays),              intent(out) :: det_img
     real(kind=4),    dimension(6, n_rays),           intent(out) :: grad_det_img
     
+    integer(kind=4), dimension(3, n_rays, n_points)  :: floor_points
+    real(kind=4),    dimension(3, n_rays, n_points)  :: w_floor
     integer(kind=4) :: r, p
     integer(kind=4) :: fx, fy, fz, cx, cy, cz
     integer(kind=4) :: dat_ind

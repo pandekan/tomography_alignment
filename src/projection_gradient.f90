@@ -20,6 +20,8 @@ subroutine compute_gradient(alpha, beta, phi, xyz, cor_shift, source_points, det
     real(kind=4) :: r_length
     real(kind=4), dimension(n_rays) :: a_temp
     real(kind=4), dimension(6, n_rays) :: d_temp
+    real(kind=4), dimension(6, 3, n_rays) :: der
+    real(kind=4), dimension(3, 3) :: append_der
     real(kind=4), allocatable, dimension(:, :, :) :: points_on_ray
     real(kind=4), allocatable, dimension(:, :)    :: step
     
@@ -70,8 +72,6 @@ subroutine compute_gradient(alpha, beta, phi, xyz, cor_shift, source_points, det
     
     ! compute forward projection and its derivative wrt angles and translations
     call ray_forward_der_trilinear(points_on_ray, n_rays, n_on_ray, nx, ny, nz, recon, step, der, append_der, ax, dax)
-    !ax = a_temp
-    !dax = d_temp
     
     deallocate( points_on_ray )
     deallocate( step )

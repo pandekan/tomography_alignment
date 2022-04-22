@@ -103,6 +103,7 @@ class Projection(object):
                 self.vox_counts = np.array([np.size(split_centers[i]) for i in range(self.size)])
                 self.vox_displacements = np.insert(np.cumsum(self.vox_counts), 0, 0)[0:-1]
         else:
+            self.pmat = None
             self.my_n_proj = self.n_proj
             self.my_phi, self.my_alpha, self.my_beta = self.phi, self.alpha, self.beta
             self.my_xyz_shifts = self.xyz_shifts

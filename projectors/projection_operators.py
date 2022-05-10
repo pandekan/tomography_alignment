@@ -9,8 +9,13 @@ from projectors.ray_tracing import forward_sparse as ray_forward_sparse
 from projectors.ray_tracing import forward_proj_grad as ray_forward_proj_grad
 from src import forward_projection, back_projection
 from src import projection_gradient
-from mpi4py import MPI
 
+try:
+    from mpi4py import MPI
+    mpi_available = True
+except ImportError:
+    mpi_available = False
+    
 
 class Projection(object):
 
@@ -29,22 +34,22 @@ class Projection(object):
             self.size = self.comm.Get_size()
             self.my_rank = self.comm.Get_rank()
             
-        self.phi = None
         self.alpha = None
         self.beta = None
+        self.phi = None
         self.xyz_shifts = None
 
     def setup(self, angles=None, xyz_shifts=None):
     
         if angles is None:
-            self.phi = np.linspace(0.0, np.pi, self.n_proj)
             self.alpha = np.zeros(self.n_proj, )
             self.beta = np.zeros(self.n_proj, )
+            self.phi = np.linspace(0.0, np.pi, self.n_proj)
         else:
             assert (angles.shape[0] == self.n_proj)
-            self.phi = angles[:, 0]
-            self.alpha = angles[:, 1]
-            self.beta = angles[:, 2]
+            self.alpha = angles[:, 0]
+            self.beta = angles[:, 1]
+            self.phi = angles[:, 2]
     
         if xyz_shifts is None:
             self.xyz_shifts = np.zeros((self.n_proj, 3))

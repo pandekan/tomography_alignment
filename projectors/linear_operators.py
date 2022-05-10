@@ -5,7 +5,11 @@
 
 import numpy as np
 from src import forward_projection, back_projection
-from mpi4py import MPI
+try:
+    from mpi4py import MPI
+    mpi_available = True
+except ImportError:
+    mpi_available = False
 
 
 def profile(fnc): 

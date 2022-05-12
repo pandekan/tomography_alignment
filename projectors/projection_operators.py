@@ -320,6 +320,7 @@ class ProjectionGradient(object):
     
     def proj_gradient(self, recon, alpha, beta, phi, xyz_shift, cor_shift):
         
+        recon = recon.ravel().astype(self.precision)
         nx, ny, nz = self.geometry.vox_shape
         p_image, p_gradient = projection_gradient.compute_gradient(alpha, beta, phi, xyz_shift, cor_shift,
                                                                    self.my_source_centers, self.my_det_centers,

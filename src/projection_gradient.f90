@@ -49,7 +49,7 @@ subroutine compute_gradient(alpha, beta, phi, xyz, cor_shift, source_points, det
     r_length = sqrt(r(1, 1)**2 + r(2, 1)**2 + r(3, 1)**2)
     r_hat = r(:, 1)/r_length
     n_on_ray = nint(r_length/step_size)
-        
+    
     allocate( points_on_ray(3, n_rays, n_on_ray) )
     allocate( step(n_rays, n_on_ray))
     points_on_ray = 0._4

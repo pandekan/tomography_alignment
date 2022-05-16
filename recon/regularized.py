@@ -125,7 +125,13 @@ class RegularizedRecon(object):
                 # rms error between input data and projection from current reconstruction
                 rms_error[k] = np.sqrt(2*data_fidelity_cost[k])/self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec)/self.norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth.ravel() - self.rec)/self.norm_factor
+            
+            if k > 0 and rms_error[k] > rms_error[k - 1]:
+                stop = 1
+                if self.my_rank == 0:
+                    print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f'
+                          % (k, rms_error[k]))
             
             if make_plot and self.my_rank == 0:
                 if k == 0:
@@ -156,10 +162,11 @@ class RegularizedRecon(object):
                     
                     plt.show()
                     plt.pause(0.1)
-                
+            
             k += 1
         
-        return self.rec.reshape(self.geometry.vox_shape), rms_error[:k]
+        #return self.rec.reshape(self.geometry.vox_shape), rms_error[:k]
+        return self.rec, rms_error[:k]
 
     def run_tikhonov_gd(self, niter=100, reg_param=1.0, positivity=False, make_plot=False, projections=None):
         """

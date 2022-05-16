@@ -106,49 +106,51 @@ subroutine ray_forward_trilinear(points_on_ray, n_rays, n_points, recon, nx, ny,
             wt_cz = 1._4 - wt_fz
             
             if (fx >= 1 .and. fx <= nx .and. fy >= 1 .and. fy <= ny .and. fz >=1 .and. fz <= nz) then
-                dat_ind = (fx-1)*ny*nz + (fy-1)*nz + fz-1 + 1
+                ! dat_ind = (fx-1)*ny*nz + (fy-1)*nz + fz-1 + 1
+                ! redundant +1 -1 = 0 ---> DUH. I had left it there probably for symmetry reasons :)
+                dat_ind = (fx-1)*ny*nz + (fy-1)*nz + fz
                 wt = wt_fx * wt_fy * wt_fz
                 det_img(r) = det_img(r) + recon(dat_ind)*wt
             end if
             
             if (fx >= 1 .and. fx <= nx .and. fy >= 1 .and. fy <= ny .and. cz >= 1 .and. cz <= nz) then
-                dat_ind = (fx-1)*ny*nz + (fy-1)*nz + cz-1 + 1
+                dat_ind = (fx-1)*ny*nz + (fy-1)*nz + cz
                 wt = wt_fx * wt_fy * wt_cz
                 det_img(r) = det_img(r) + recon(dat_ind)*wt
             end if
             
             if (fx >= 1 .and. fx <= nx .and. cy >= 1 .and. cy <= ny .and. fz >= 1 .and. fz <= nz) then
-                dat_ind = (fx-1)*ny*nz + (cy-1)*nz + fz-1 + 1
+                dat_ind = (fx-1)*ny*nz + (cy-1)*nz + fz
                 wt = wt_fx * wt_cy * wt_fz
                 det_img(r) = det_img(r) + recon(dat_ind)*wt
             end if
             
             if (fx >= 1 .and. fx <= nx .and. cy >= 1 .and. cy <= ny .and. cz >= 1 .and. cz <= nz) then
-                dat_ind = (fx-1)*ny*nz + (cy-1)*nz + cz-1 + 1
+                dat_ind = (fx-1)*ny*nz + (cy-1)*nz + cz
                 wt = wt_fx * wt_cy * wt_cz
                 det_img(r) = det_img(r) + recon(dat_ind)*wt
             end if
             
             if (cx >= 1 .and. cx <= nx .and. fy >= 1 .and. fy <= ny .and. fz >=1 .and. fz <= nz) then
-                dat_ind = (cx-1)*ny*nz + (fy-1)*nz + fz-1 + 1
+                dat_ind = (cx-1)*ny*nz + (fy-1)*nz + fz
                 wt = wt_cx * wt_fy * wt_fz
                 det_img(r) = det_img(r) + recon(dat_ind) * wt
             end if
             
             if (cx >= 1 .and. cx <= nx .and. fy >= 1 .and. fy <= ny .and. cz >= 1 .and. cz <= nz) then
-                dat_ind = (cx-1)*ny*nz + (fy-1)*nz + cz-1 + 1
+                dat_ind = (cx-1)*ny*nz + (fy-1)*nz + cz
                 wt = wt_cx * wt_fy * wt_cz
                 det_img(r) = det_img(r) + recon(dat_ind) * wt
             end if
             
             if (cx >= 1 .and. cx <= nx .and. cy >= 1 .and. cy <= ny .and. fz >= 1 .and. fz <= nz) then
-                dat_ind = (cx-1)*ny*nz + (cy-1)*nz + fz-1 + 1
+                dat_ind = (cx-1)*ny*nz + (cy-1)*nz + fz
                 wt = wt_cx * wt_cy * wt_fz
                 det_img(r) = det_img(r) + recon(dat_ind)*wt
             end if
             
             if (cx >= 1 .and. cx <= nx .and. cy >= 1 .and. cy <= ny .and. cz >= 1 .and. cz <= nz) then
-                dat_ind = (cx-1)*ny*nz + (cy-1)*nz + cz-1 + 1
+                dat_ind = (cx-1)*ny*nz + (cy-1)*nz + cz
                 wt = wt_cx * wt_cy * wt_cz
                 det_img(r) = det_img(r) + recon(dat_ind)*wt
             end if

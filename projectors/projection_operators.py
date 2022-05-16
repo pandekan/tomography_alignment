@@ -333,7 +333,7 @@ class ProjectionGradient(object):
             f_temp = np.zeros((self.geometry.n_det, ), dtype=np.float32)
             fp_temp = np.zeros((6, self.geometry.n_det), dtype=np.float32)
             f_proj = np.zeros((self.geometry.n_det, ), dtype=np.float32)
-            fp_proj = np.zeros((6, self.geometry.n_rays, ), dtype=np.float32)
+            fp_proj = np.zeros((6, self.geometry.n_det), dtype=np.float32)
             if self.my_n_rays > 0:
                 f_temp[self.my_rays] = p_image
                 fp_temp[:, self.my_rays] = p_gradient

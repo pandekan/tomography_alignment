@@ -1,13 +1,13 @@
 import numpy as np
 from scipy import sparse
 import h5py
-from utilities import generate_shepp, geometry, projection_operators
+from utilities import generate_phantom, geometry, projection_operators
 
 nx = ny = nz = 64
 n_proj = 90
 
 # shepp-logan phantom of size nx X nx X nx
-shepp = generate_shepp.shepp3d(nx)
+shepp = generate_phantom.shepp3d(nx)
 
 # geometry
 geom = geometry.Geometry(n_proj, np.array([nx, ny, nz]), np.ones(3, ),

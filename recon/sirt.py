@@ -2,7 +2,6 @@ import numpy as np
 import time
 from scipy import sparse
 from utilities import projection_operators
-from utilities import linear_operators as tomo_linop
 
 
 class SIRT(object):

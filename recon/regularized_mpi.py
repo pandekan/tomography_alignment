@@ -4,7 +4,9 @@
 # ------------------------------------------------
 
 import numpy as np
+import copy
 from scipy import sparse, optimize
+from mpi4py import MPI
 from utilities import projection_operators
 from utilities import tv_denoise
 
@@ -17,8 +19,9 @@ class RegularizedRecon(object):
     run_fista: Fast iterative shrinkage thresholding algorithm for solving TV regularized least-squares problem
     """
     
-    def __init__(self, geometry, projections, angles, xyz_shifts, options={}):
+    def __init__(self, comm, geometry, projections, angles, xyz_shifts, options={}):
         
+        self.comm = comm
         self.geometry = geometry
         self.projections = projections
         self.angles = angles
@@ -29,8 +32,8 @@ class RegularizedRecon(object):
         self.precision = options['precision'] if 'precision' in options else np.float32
         self.rec = options['rec'] if 'rec' in options else None
         if self.rec is None:
-            self.rec = np.zeros(self.geometry.vox_shape, dtype=self.precision)
-        self.rec = self.rec.ravel()
+            self.rec = np.zeros(self.geometry.n_vox, dtype=self.precision)
+        self.rec = self.rec.ravel().astype(self.precision, copy=False)
         self.projections = self.projections.astype(self.precision, copy=False)
         self.voxel_mask = options['voxel_mask'] if 'voxel_mask' in options else None
         
@@ -43,15 +46,35 @@ class RegularizedRecon(object):
             
         self.f_proj_obj = None
         self.proj_mat = None
+        self.rms_error = None
         self._initialize()
     
     def _initialize(self):
         
+        self.size = self.comm.Get_size()
+        self.my_rank = self.comm.Get_rank()
+        self.my_index = np.array_split(np.arange(self.n_proj), self.size)[self.my_rank]
+        self.my_n_proj = np.size(self.my_index)
+        self.my_angles = self.angles[self.my_index]
+        self.my_xyz_shifts = self.xyz_shifts[self.my_index]
+        self.my_geom = copy.deepcopy(self.geometry)
+        self.my_geom.n_proj = self.my_n_proj
+        if self.my_geom.n_proj == 1:
+            self.my_geom.cor_shift = np.array([self.geometry.cor_shift[self.my_index]])
+        else:
+            self.my_geom.cor_shift = self.geometry.cor_shift[self.my_index]
+
+        if self.precision == np.float32:
+            mpi_float = MPI.FLOAT
+        else:
+            mpi_float = MPI.DOUBLE
+
         if self.f_proj_obj is None:
             # create an instance of the projection operator
-            self.f_proj_obj = projection_operators.ProjectionMatrix(self.geometry, precision=self.precision)
-            self.proj_mat = self.f_proj_obj.projection_matrix(phi=self.angles[:, 0], alpha=self.angles[:, 1],
-                                                              beta=self.angles[:, 2], xyz_shift=self.xyz_shifts)
+            self.f_proj_obj = projection_operators.ProjectionMatrix(self.my_geom, precision=self.precision)
+            self.proj_mat = self.f_proj_obj.projection_matrix(phi=self.my_angles[:, 0], alpha=self.my_angles[:, 1],
+                                                              beta=self.my_angles[:, 2], 
+                                                              xyz_shift=self.my_xyz_shifts)
 
     def run_fista(self, niter=100, make_plot=False, hyper=1.e4, beta_tv=1.0, niter_tv=20):
         """
@@ -66,58 +89,76 @@ class RegularizedRecon(object):
               where step 1 is solved iteratively by the dual approach for g(x) = l1 norm of the isotropic gradient.
               http://www.math.tau.ac.il/~teboulle/papers/tlv.pdf
         """
-            
+        
+        if self.precision == np.float32:
+            mpi_float = MPI.FLOAT
+        else:
+            mpi_float = MPI.DOUBLE
+        
         # parameters for forward-backward iterations
         gamma = 1./hyper
-        t = 1.0
+        t_old = 1.0
         
         # initialize metrics
-        rms_error = np.zeros(niter, )
+        self.rms_error = np.zeros(niter, )
         total_cost = np.zeros(niter, )
-        data_fidelity_cost = np.zeros(niter, )
+        cost_data_fidelity = np.zeros(niter, )
         
         u_old = self.rec.copy()
         k = 0
         stop = 0
         
         while k < niter and not stop:
-            res = sparse.csr_matrix.dot(self.proj_mat, self.rec).reshape(self.n_proj, -1)
-            res = self.projections - res
+            rec = np.zeros_like(u_old)
+
+            res = sparse.csr_matrix.dot(self.proj_mat, self.rec).reshape(self.my_n_proj, -1)
+            res = self.projections[self.my_index] - res
             
-            back_proj = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel())
+            my_back_proj = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel())
             
-            x_tmp = self.rec + gamma * back_proj
+            self.comm.Barrier()
+            self.comm.Allreduce([my_back_proj, mpi_float], [rec, mpi_float], op=MPI.SUM)
+
+            if self.my_rank == 0:
+                # Gradient descent on data fidelity term
+                x_tmp = self.rec + gamma * rec
             
-            # Minimize the proximal operator using FISTA
-            u = tv_denoise.denoise_fista(x_tmp.reshape(self.geometry.vox_shape),
-                                         weight=gamma * beta_tv, niter=niter_tv)
+                # Minimize the proximal operator using FISTA
+                u = tv_denoise.denoise_fista(x_tmp.reshape(self.geometry.vox_shape),
+                                             weight=gamma * beta_tv, niter=niter_tv)
             
-            # update t
-            t_old = t
-            t = 0.5 * (1.0 + np.sqrt(1 + 4 * t_old**2))
+                # update t
+                t = 0.5 * (1.0 + np.sqrt(1 + 4 * t_old**2))
             
-            # update reconstruction
-            u = u.ravel()
-            self.rec = u + (t_old - 1)/t * (u - u_old)
-            u_old = u
+                # update reconstruction
+                u = u.ravel().astype(self.precision, copy=False)
+                self.rec = u + (t_old - 1)/t * (u - u_old)
+                
+                t_old = t
+                u_old = u
             
+            self.comm.Barrier()
+            self.rec = self.comm.bcast(self.rec, root=0)
+
             # compute error metrics
-            data_fidelity_cost[k] = 0.5 * np.linalg.norm(res)**2
+            my_proj_err = np.linalg.norm(res)
+            cost_data_fidelity[k] = 0.5*self.comm.allreduce(my_proj_err**2, op=MPI.SUM)
             tv_value = beta_tv * tv_denoise.tv_norm_3d(self.rec.reshape(self.geometry.vox_shape))
-            total_cost[k] = data_fidelity_cost[k] + tv_value
+            total_cost[k] = cost_data_fidelity[k] + tv_value
+            
             if self.ground_truth is None:
                 # rms error between input data and projection from current reconstruction
-                rms_error[k] = np.sqrt(2*data_fidelity_cost[k])/self.norm_factor
+                self.rms_error[k] = np.sqrt(2*cost_data_fidelity[k])/self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth.ravel() - self.rec)/self.norm_factor
+                self.rms_error[k] = np.linalg.norm(self.ground_truth.ravel() - self.rec)/self.norm_factor
             
-            if k > 0 and rms_error[k] > rms_error[k - 1]:
+            if k > 0 and self.rms_error[k] > self.rms_error[k - 1]:
                 stop = 1
                 if self.my_rank == 0:
                     print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f'
-                          % (k, rms_error[k]))
+                          % (k, self.rms_error[k]))
             
-            if make_plot:
+            if make_plot and self.my_rank==0:
                 if k == 0:
                     import matplotlib.pyplot as plt
                     plt.ion()
@@ -150,7 +191,7 @@ class RegularizedRecon(object):
             k += 1
         
         #return self.rec.reshape(self.geometry.vox_shape), rms_error[:k]
-        return self.rec, rms_error[:k]
+        return self.rec, self.rms_error[:k]
 
     def run_tikhonov_gd(self, niter=100, reg_param=1.0, positivity=False, make_plot=False, projections=None):
         """

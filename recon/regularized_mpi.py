@@ -175,7 +175,7 @@ class RegularizedRecon(object):
                     
                     ax3.cla()
                     ax3.set_title('Root Mean-Squared Error')
-                    ax3.semilogy(rms_error[1:k])
+                    ax3.semilogy(self.rms_error[1:k])
                     
                     ax4.cla()
                     ax4.set_title('Energy')
@@ -183,7 +183,7 @@ class RegularizedRecon(object):
                     
                     ax5.cla()
                     ax5.set_title('Residual')
-                    ax5.semilogy(data_fidelity_cost[1:k])
+                    ax5.semilogy(cost_data_fidelity[1:k])
                     
                     plt.show()
                     plt.pause(0.1)

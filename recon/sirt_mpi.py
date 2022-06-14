@@ -4,7 +4,6 @@ import time
 from mpi4py import MPI
 import matplotlib.pyplot as plt
 from utilities import projection_operators
-from utilities import linear_operators as tomo_linop
 import copy
 
 

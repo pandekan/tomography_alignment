@@ -52,16 +52,16 @@ subroutine voxel_back_bilinear(rot_voxel_centers, n_vox, n_det_x, n_det_z, origi
         fx = floor_x(i)+1
         fz = floor_z(i)+1
         if (fx >= 1 .and. fx <= n_det_x .and. fz >= 1 .and. fz <= n_det_z) then
-            vox_image(i) = vox_image(i) + det_image(fz, fx) * (1._4-alpha_x(i)) * (1._4-alpha_z(i))
+            vox_image(i) = vox_image(i) + det_image(fx, fz) * (1._4-alpha_x(i)) * (1._4-alpha_z(i))
         end if
         if (fx+1 >= 1 .and. fx+1 <= n_det_x .and. fz >= 1 .and. fz <= n_det_z) then
-            vox_image(i) = vox_image(i) + det_image(fz, fx+1) * (alpha_x(i)) * (1._4-alpha_z(i))
+            vox_image(i) = vox_image(i) + det_image(fx+1, fz) * (alpha_x(i)) * (1._4-alpha_z(i))
         end if
         if (fx >= 1 .and. fx <= n_det_x .and. fz+1 >= 1 .and. fz+1 <= n_det_z) then
-            vox_image(i) = vox_image(i) + det_image(fz+1, fx) * (1._4-alpha_x(i)) * alpha_z(i)
+            vox_image(i) = vox_image(i) + det_image(fx, fz+1) * (1._4-alpha_x(i)) * alpha_z(i)
         end if
         if (fx+1 >= 1 .and. fx+1 <= n_det_x .and. fz+1 >= 1 .and. fz+1 <= n_det_z) then
-            vox_image(i) = vox_image(i) + det_image(fz+1, fx+1)  * alpha_x(i) * alpha_z(i)
+            vox_image(i) = vox_image(i) + det_image(fx+1, fz+1)  * alpha_x(i) * alpha_z(i)
         end if
     end do
     

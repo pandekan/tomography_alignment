@@ -3,18 +3,18 @@ subroutine trilinear_ray_sparse(floor_points, w_floor, nx, ny, nz, n_rays, n_poi
     implicit none
     
     integer(kind=4), dimension(:, :, :),           intent(in)  :: floor_points
-    real(kind=4),    dimension(:, :, :),           intent(in)  :: w_floor
+    real(kind=8),    dimension(:, :, :),           intent(in)  :: w_floor
     integer(kind=4),                               intent(in)  :: nx, ny, nz, n_rays, n_points
     integer(kind=4), dimension(8*n_rays*n_points), intent(out) :: dat_inds, det_inds
-    real(kind=4),    dimension(8*n_rays*n_points), intent(out) :: wts
+    real(kind=8),    dimension(8*n_rays*n_points), intent(out) :: wts
     integer(kind=4),                               intent(out) :: n_inds
     integer(kind=4) :: r, p
     integer(kind=4) :: fx, fy, fz, cx, cy, cz
-    real(kind=4)    :: wt_fx, wt_fy, wt_fz, wt_cx, wt_cy, wt_cz
+    real(kind=8)    :: wt_fx, wt_fy, wt_fz, wt_cx, wt_cy, wt_cz
     
     dat_inds(:) = -999
     det_inds(:) = -999
-    wts(:) = -999._4
+    wts(:) = -999._8
     n_inds = 0
     
     do r = 1, n_rays
@@ -28,9 +28,9 @@ subroutine trilinear_ray_sparse(floor_points, w_floor, nx, ny, nz, n_rays, n_poi
             wt_fx = w_floor(1, r, p)
             wt_fy = w_floor(2, r, p)
             wt_fz = w_floor(3, r, p)
-            wt_cx = 1._4 - wt_fx
-            wt_cy = 1._4 - wt_fy
-            wt_cz = 1._4 - wt_fz
+            wt_cx = 1._8 - wt_fx
+            wt_cy = 1._8 - wt_fy
+            wt_cz = 1._8 - wt_fz
             
             if (fx >= 1 .and. fx <= nx .and. fy >= 1 .and. fy <= ny .and. fz >=1 .and. fz <= nz) then
                 n_inds = n_inds + 1

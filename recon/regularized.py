@@ -5,6 +5,7 @@
 
 import numpy as np
 from scipy import sparse, optimize
+from scipy.optimize.linesearch import line_search_armijo
 from utilities import projection_operators
 from utilities import tv_denoise
 
@@ -152,7 +153,7 @@ class RegularizedRecon(object):
         #return self.rec.reshape(self.geometry.vox_shape), rms_error[:k]
         return self.rec, rms_error[:k]
 
-    def run_tikhonov_gd(self, niter=100, reg_param=1.0, positivity=False, make_plot=False, projections=None):
+    def run_tikhonov_gd(self, niter=100, reg_param=1.0, positivity=False, make_plot=False):
         """
             Solve x* = argmin_x 0.5*|Ax - b|^2 + 0.5*lambda * |x|^2
             using gradient descent with simple line search
@@ -164,36 +165,34 @@ class RegularizedRecon(object):
             :return: reconstruction, rms_error
         """
 
-        if projections is not None:
-            self.projections = projections
-
-        if self.ground_truth is not None:
-            self.ground_truth = self.ground_truth.ravel()
-            norm_factor = np.linalg.norm(self.ground_truth)
-        else:
-            norm_factor = np.linalg.norm(self.projections)
-
         stop = 0
         k = 0
-        rms_error = np.zeros((niter,))
-        convergence = np.zeros((niter,))
+        rms_error = np.zeros(niter,)
+        convergence = np.zeros(niter,)
         self.rec = self.rec.ravel()
         while k < niter and not stop:
             # gradient = - At(b - Ax_tilde) + reg_parm * x_tilde, where x_tilde is rec after positivity
             # compute back-projection: At(b - Ax)
     
-            res = self.projections - self.proj_obj.forward_project(self.rec)
-            grad = self.proj_obj.back_project(res)  # At (b - Ax)
+            res = self.projections - sparse.csr_matrix.dot(self.proj_mat, self.rec).reshape(self.n_proj, -1)
+            grad = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel()) # At (b - Ax)
     
             grad = -grad + reg_param * self.rec  # At(Ax-b) + reg_param * Lt L x
     
             # find step length using line search
-            line_out = optimize.line_search(my_tikh_f, my_tikh_fp, self.rec, -grad,
-                                            args=(self.proj_obj, self.projections, reg_param))
-            alpha = line_out[0]
+            #line_out = optimize.line_search(my_tikh_f, my_tikh_fp, self.rec, -grad,
+            #                                args=(self.proj_mat, self.projections.ravel(), reg_param))
+            #alpha = line_out[0]
+            
+            # find step length using Armijo line search
+            cost = 0.5 * (np.linalg.norm(res)**2 + reg_param * np.linalg.norm(self.rec)**2)
+            alpha, _, _ = line_search_armijo(my_tikh_f, self.rec, -grad, grad, cost, alpha0=1.0, 
+                    args=(self.proj_mat, self.projections, reg_param))
+
             if alpha is None:
-                alpha = 1.e-3
-    
+                print('line search failed at iteration %3d' %(k))
+                break
+
             # update
             self.rec -= alpha * grad
     
@@ -203,9 +202,9 @@ class RegularizedRecon(object):
     
             convergence[k] = np.linalg.norm(res)
             if self.ground_truth is None:
-                rms_error[k] = convergence[k] / norm_factor
+                rms_error[k] = convergence[k] / self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / self.norm_factor
     
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
@@ -213,7 +212,7 @@ class RegularizedRecon(object):
                     print('semi-convergence criterion reached: stopping at k %3d with RMSE = %4.5f'
                           % (k, rms_error[k]))
     
-            if make_plot and self.my_rank == 0:
+            if make_plot:
                 if k == 0:
                     import matplotlib.pyplot as plt
                     plt.ion()
@@ -237,7 +236,7 @@ class RegularizedRecon(object):
 
         return self.rec, rms_error[:k]
 
-    def run_lasso_ista(self, niter=100, reg_param=1.0, alpha0=1.0, beta=0.5, make_plot=False, projections=None):
+    def run_lasso_ista(self, niter=100, reg_param=1.0, alpha0=1.0, beta=0.5, make_plot=False):
         """
         Solve the "Lasso" problem x* = argmin 0.5 |Ax-b|^2 + \lambda |x|_1 = g(x) + h(x)
         with proximal gradient descent and soft-thresholding operator.
@@ -255,43 +254,34 @@ class RegularizedRecon(object):
         err: rms_error
         """
 
-        if projections is not None:
-            self.projections = projections
-
-        if self.ground_truth is not None:
-            self.ground_truth = self.ground_truth.ravel()
-            norm_factor = np.linalg.norm(self.ground_truth)
-        else:
-            norm_factor = np.linalg.norm(self.projections)
-
         stop = 0
         k = 0
-        rms_error = np.zeros((niter,))
-        convergence = np.zeros((niter,))
+        rms_error = np.zeros(niter, )
+        convergence = np.zeros(niter, )
         step_size = np.zeros(niter, )
         self.rec = self.rec.ravel()
         while k < niter and not stop:
             # gradient of fidelity term = - At(b - Ax_tilde)
             # compute back-projection: At(b - Ax)
-            res = self.proj_obj.forward_project(self.rec)
+            res = sparse.csr_matrix.dot(self.proj_mat, self.rec).reshape(self.n_proj, -1)
             res = res - self.projections
-            grad = self.proj_obj.back_project(res)
+            grad = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel())
     
             # backtracking linesearch for proximal gradient descent
             _, alpha, success = self._backtrack_lasso(alpha0, beta, res, grad, reg_param)
             step_size[k] = alpha
             if not success:
                 print('line search failed to converge')
-                stop = 1
-            else:
-                # update
-                self.rec = soft_thresholding(self.rec - alpha * grad, alpha * reg_param)
+                break
+            
+            # update
+            self.rec = soft_thresholding(self.rec - alpha * grad, alpha * reg_param)
     
             convergence[k] = np.linalg.norm(res)
             if self.ground_truth is None:
-                rms_error[k] = convergence[k] / norm_factor
+                rms_error[k] = convergence[k] / self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / self.norm_factor
     
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
@@ -331,7 +321,7 @@ class RegularizedRecon(object):
             xp = soft_thresholding(self.rec - t * dg0, t * _lambda)
             Gt = self.rec - xp
     
-            g = self.proj_obj.forward_project(xp) - self.projections
+            g = sparse.csr_matrix.dot(self.proj_mat, xp).reshape(self.n_proj, -1) - self.projections
             g = 0.5 * np.linalg.norm(g) ** 2
             gp = g0 - np.dot(dg0.T, Gt) + (0.5 / t) * np.linalg.norm(Gt) ** 2
             # print(t, g, gp)
@@ -341,8 +331,7 @@ class RegularizedRecon(object):
                 t *= beta
         return xp, t, False
 
-    def run_lasso_accelerated(self, niter=100, reg_param=1.0, alpha0=1.0, beta=0.5, make_plot=False,
-                              projections=None):
+    def run_lasso_accelerated(self, niter=100, reg_param=1.0, alpha0=1.0, beta=0.5, make_plot=False):
         """
         Solve the "Lasso" problem x* = argmin 0.5 |Ax-b|^2 + \lambda |x|_1 = g(x) + h(x)
         with proximal gradient descent and soft-thresholding operator using the accelerated method.
@@ -360,19 +349,10 @@ class RegularizedRecon(object):
         err: rms_error
         """
 
-        if projections is not None:
-            self.projections = projections
-
-        if self.ground_truth is not None:
-            self.ground_truth = self.ground_truth.ravel()
-            norm_factor = np.linalg.norm(self.ground_truth)
-        else:
-            norm_factor = np.linalg.norm(self.projections)
-
         stop = 0
         k = 0
-        rms_error = np.zeros((niter,))
-        convergence = np.zeros((niter,))
+        rms_error = np.zeros(niter,)
+        convergence = np.zeros(niter,)
 
         self.rec = self.rec.ravel()
         x_0 = np.zeros_like(self.rec)
@@ -380,27 +360,27 @@ class RegularizedRecon(object):
         while k < niter and not stop:
             # gradient of fidelity term = - At(b - Ax_tilde)
             # compute back-projection: At(b - Ax)
-            res = self.proj_obj.forward_project(self.rec) - self.projections
-            grad = self.proj_obj.back_project(res)
+            res = sparse.csr_matrix.dot(self.proj_mat, self.rec).reshape(self.n_proj, -1) - self.projections
+            grad = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(self.proj_mat), res.ravel())
     
             # backtracking linesearch for proximal gradient descent
             _, alpha, success = self._backtrack_lasso(alpha0, beta, res, grad, reg_param)
     
             if not success:
                 print('line search failed to converge')
-                stop = 1
-            else:
-                # update
-                v = x_1 + (k - 2) / (k + 1) * (x_1 - x_0)
-                self.rec = soft_thresholding(v - alpha * grad, alpha * reg_param)
-                x_0 = x_1.copy()
-                x_1 = self.rec.copy()
+                break
+
+            # update
+            v = x_1 + (k - 2) / (k + 1) * (x_1 - x_0)
+            self.rec = soft_thresholding(v - alpha * grad, alpha * reg_param)
+            x_0 = x_1.copy()
+            x_1 = self.rec.copy()
     
             convergence[k] = np.linalg.norm(res)
             if self.ground_truth is None:
-                rms_error[k] = convergence[k] / norm_factor
+                rms_error[k] = convergence[k] / self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / self.norm_factor
     
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
@@ -433,19 +413,19 @@ class RegularizedRecon(object):
         return self.rec, rms_error[:k]
 
 
-def my_tikh_f(x, proj_obj, b, _lambda):
+def my_tikh_f(x, proj_mat, b, _lambda):
 
-    res = proj_obj.forward_project(x) - b
+    res = sparse.csr_matrix.dot(proj_mat, x) - b
 
     res = 0.5 * np.linalg.norm(res) ** 2 + 0.5 * _lambda * np.linalg.norm(x) ** 2
 
     return res
 
 
-def my_tikh_fp(x, proj_obj, b, _lambda):
+def my_tikh_fp(x, proj_mat, b, _lambda):
 
-    res = proj_obj.forward_project(x) - b
-    grad = proj_obj.back_project(res) + _lambda * x
+    res = sparse.csr_matrix.dot(proj_mat, x) - b
+    grad = sparse.csc_matrix.dot(sparse.csr_matrix.transpose(proj_mat), res) + _lambda * x
 
     return grad
 

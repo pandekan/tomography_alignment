@@ -249,7 +249,7 @@ class RegularizedRecon(object):
             if self.ground_truth is None:
                 rms_error[k] = convergence[k] / self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / self.norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth.ravel() - self.rec) / self.norm_factor
     
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
@@ -341,7 +341,7 @@ class RegularizedRecon(object):
             if self.ground_truth is None:
                 rms_error[k] = convergence[k] / self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / self.norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth.ravel() - self.rec) / self.norm_factor
     
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1
@@ -411,7 +411,6 @@ class RegularizedRecon(object):
         rec: reconstruction
         err: rms_error
         """
-
         stop = 0
         k = 0
         rms_error = np.zeros(niter,)
@@ -461,7 +460,7 @@ class RegularizedRecon(object):
             if self.ground_truth is None:
                 rms_error[k] = convergence[k] / self.norm_factor
             else:
-                rms_error[k] = np.linalg.norm(self.ground_truth - self.rec) / self.norm_factor
+                rms_error[k] = np.linalg.norm(self.ground_truth.ravel() - self.rec) / self.norm_factor
     
             if k > 1 and rms_error[k] > rms_error[k - 1]:
                 stop = 1

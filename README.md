@@ -3,7 +3,7 @@ Rigid body alignment for x-ray tomography data
 
 # Installation
 
-To simply install the package `tomoalign` as an editable package, please do:
+To simply install the package `tomoalign` from [pyproject.toml](./pyproject.toml) as an editable package, please do:
 
 ```bash
 pip install -e .
@@ -15,7 +15,7 @@ Alternatively, you can install this package with [poetry](https://github.com/pyt
 poetry install
 ```
 
-This will install the `tomoalign` package from [pyproject.toml](./pyproject.toml) in a separate virtual environment. To activate the virtual environment simply type `poetry shell` (at repository's root folder) and to deactive the environment `deactivate`.
+To activate this virtual environment simply type `poetry shell` (at repository's root folder) and to deactive the environment `deactivate`.
 
 
 ## Fortran code compilation

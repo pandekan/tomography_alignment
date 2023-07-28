@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "tomoalign"
 version = "0.1.0"
-description = "Just a fork of pandekan/tomography_alignment for testing"
-authors = ["ShantanuK <shantanukodgirwar@gmail.com>"]
+description = "Rigid body alignment for x-ray tomography data"
+authors = ["Kanupriya Pandey <kpande@lbl.gov>"]
 license = "MIT"
 readme = "README.md"
 

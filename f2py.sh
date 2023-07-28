@@ -3,9 +3,6 @@
 # Store the original directory
 original_directory=$(pwd)
 
-# activate the virtual environment
-poetry shell
-
 # Change to the desired directory using a relative path
 cd tomoalign
 

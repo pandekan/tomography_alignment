@@ -13,11 +13,7 @@ h5py = "^3.9.0"
 scipy = "^1.11.1"
 mpi4py = "^3.1.4"
 scikit-image = "^0.21.0"
-
-[tool.poetry.group.dev.dependencies]
 matplotlib = "^3.7.2"
-black = "^23.7.0"
-pytest = "^7.4.0"
 
 [build-system]
 requires = ["poetry-core"]

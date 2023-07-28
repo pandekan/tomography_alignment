@@ -6,8 +6,7 @@ Most of these modules are from tomopy by Gursoy et al.
 https://tomopy.readthedocs.io/en/latest/about.html
 """
 
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import numpy as np
 
@@ -18,14 +17,14 @@ def _totuple(size, dim):
     """
     if not isinstance(size, tuple):
         if dim == 2:
-             size = (size, size)
+            size = (size, size)
         elif dim == 3:
-             size = (size, size, size)
-             
-    return size
-    
+            size = (size, size, size)
 
-def shepp3d(size=128, dtype='float32'):
+    return size
+
+
+def shepp3d(size=128, dtype="float32"):
     """
     Load 3D Shepp-Logan image array.
 
@@ -46,39 +45,41 @@ def shepp3d(size=128, dtype='float32'):
     return phantom(size, shepp_params, dtype).clip(0, np.inf)
 
 
-def arbitrary_phantom(size=128, n_features=20, dtype='float32'):
+def arbitrary_phantom(size=128, n_features=20, dtype="float32"):
     """
     Create an arbitrary phantom with n ellipsoids.
     Parameters for ellipsoids are randomly generated.
-    
+
     size: int or tuple giving size of the 3D phantom
     n_features: number of ellipsoids
     dtype: desired datatype for the array
-    
+
     Returns:
     ndarray: 3D phantom
     """
-    
+
     size = _totuple(size, 3)
     # ellipsoid parameters
     phantom_params = np.zeros((n_features, 10))
-    
+
     # get voxel values between -1 and 1
-    phantom_params[:, 0] = np.random.randint(-100, 100, n_features)/100.
-    
+    phantom_params[:, 0] = np.random.randint(-100, 100, n_features) / 100.0
+
     # centers of ellipsoids between 0 and 1
     phantom_params[:, 1:4] = np.random.rand(n_features, 3)
-    
-    # a, b, c parameters between -1 and 1
-    phantom_params[:, 4:7] = (np.random.randint(-200, 200, n_features*3)/200).reshape(n_features, 3)
-    
-    # alpha, beta, phi in degrees between 0 and 180
-    phantom_params[:, 7:] = np.rad2deg(np.random.rand(n_features, 3)*np.pi)
-    
-    return phantom(size, _array_to_params(phantom_params), dtype).clip(0., np.inf)
 
-    
-def phantom(size, params, dtype='float32'):
+    # a, b, c parameters between -1 and 1
+    phantom_params[:, 4:7] = (
+        np.random.randint(-200, 200, n_features * 3) / 200
+    ).reshape(n_features, 3)
+
+    # alpha, beta, phi in degrees between 0 and 180
+    phantom_params[:, 7:] = np.rad2deg(np.random.rand(n_features, 3) * np.pi)
+
+    return phantom(size, _array_to_params(phantom_params), dtype).clip(0.0, np.inf)
+
+
+def phantom(size, params, dtype="float32"):
     """
     Generate a cube of given size using a list of ellipsoid parameters.
 
@@ -136,11 +137,11 @@ def _ellipsoid(params, shape=None, out=None, coords=None):
     # recast as ndarray
     coords = np.asarray(coords)
     np.square(coords, out=coords)
-    ellip_mask = coords.sum(axis=0) <= 1.
+    ellip_mask = coords.sum(axis=0) <= 1.0
     ellip_mask.resize(shape)
 
     # fill ellipsoid with value
-    out[ellip_mask] += params['A']
+    out[ellip_mask] += params["A"]
     return out
 
 
@@ -148,21 +149,25 @@ def _rotation_matrix(p):
     """
     Defines an Euler rotation matrix from angles phi, theta and psi.
     """
-    cphi = np.cos(np.radians(p['phi']))
-    sphi = np.sin(np.radians(p['phi']))
-    ctheta = np.cos(np.radians(p['theta']))
-    stheta = np.sin(np.radians(p['theta']))
-    cpsi = np.cos(np.radians(p['psi']))
-    spsi = np.sin(np.radians(p['psi']))
-    alpha = [[cpsi * cphi - ctheta * sphi * spsi,
-              cpsi * sphi + ctheta * cphi * spsi,
-              spsi * stheta],
-             [-spsi * cphi - ctheta * sphi * cpsi,
-              -spsi * sphi + ctheta * cphi * cpsi,
-              cpsi * stheta],
-             [stheta * sphi,
-              -stheta * cphi,
-              ctheta]]
+    cphi = np.cos(np.radians(p["phi"]))
+    sphi = np.sin(np.radians(p["phi"]))
+    ctheta = np.cos(np.radians(p["theta"]))
+    stheta = np.sin(np.radians(p["theta"]))
+    cpsi = np.cos(np.radians(p["psi"]))
+    spsi = np.sin(np.radians(p["psi"]))
+    alpha = [
+        [
+            cpsi * cphi - ctheta * sphi * spsi,
+            cpsi * sphi + ctheta * cphi * spsi,
+            spsi * stheta,
+        ],
+        [
+            -spsi * cphi - ctheta * sphi * cpsi,
+            -spsi * sphi + ctheta * cphi * cpsi,
+            cpsi * stheta,
+        ],
+        [stheta * sphi, -stheta * cphi, ctheta],
+    ]
     return np.asarray(alpha)
 
 
@@ -172,7 +177,7 @@ def _define_coords(shape):
     """
     mgrid = np.lib.index_tricks.nd_grid()
     cshape = np.asarray(1j) * shape
-    x, y, z = mgrid[-1:1:cshape[0], -1:1:cshape[1], -1:1:cshape[2]]
+    x, y, z = mgrid[-1 : 1 : cshape[0], -1 : 1 : cshape[1], -1 : 1 : cshape[2]]
     return x, y, z
 
 
@@ -184,8 +189,8 @@ def _transform(coords, p):
     out_coords = np.tensordot(alpha, coords, axes=1)
     _shape = (3,) + (1,) * (out_coords.ndim - 1)
     _dt = out_coords.dtype
-    M0 = np.array([p['x0'], p['y0'], p['z0']], dtype=_dt).reshape(_shape)
-    sc = np.array([p['a'], p['b'], p['c']], dtype=_dt).reshape(_shape)
+    M0 = np.array([p["x0"], p["y0"], p["z0"]], dtype=_dt).reshape(_shape)
+    sc = np.array([p["a"], p["b"], p["c"]], dtype=_dt).reshape(_shape)
     out_coords -= M0
     out_coords /= sc
     return out_coords
@@ -196,16 +201,17 @@ def _get_shepp_array():
     Returns the parameters for generating modified Shepp-Logan phantom.
     """
     shepp_array = [
-        [1.,  .6900, .920, .810,   0.,     0.,   0.,   90.,   90.,   90.],
-        [-.8, .6624, .874, .780,   0., -.0184,   0.,   90.,   90.,   90.],
-        [-.2, .1100, .310, .220,  .22,     0.,   0., -108.,   90.,  100.],
-        [-.2, .1600, .410, .280, -.22,     0.,   0.,  108.,   90.,  100.],
-        [.1,  .2100, .250, .410,   0.,    .35, -.15,   90.,   90.,   90.],
-        [.1,  .0460, .046, .050,   0.,     .1,  .25,   90.,   90.,   90.],
-        [.1,  .0460, .046, .050,   0.,    -.1,  .25,   90.,   90.,   90.],
-        [.1,  .0460, .023, .050, -.08,  -.605,   0.,   90.,   90.,   90.],
-        [.1,  .0230, .023, .020,   0.,  -.606,   0.,   90.,   90.,   90.],
-        [.1,  .0230, .046, .020,  .06,  -.605,   0.,   90.,   90.,   90.]]
+        [1.0, 0.6900, 0.920, 0.810, 0.0, 0.0, 0.0, 90.0, 90.0, 90.0],
+        [-0.8, 0.6624, 0.874, 0.780, 0.0, -0.0184, 0.0, 90.0, 90.0, 90.0],
+        [-0.2, 0.1100, 0.310, 0.220, 0.22, 0.0, 0.0, -108.0, 90.0, 100.0],
+        [-0.2, 0.1600, 0.410, 0.280, -0.22, 0.0, 0.0, 108.0, 90.0, 100.0],
+        [0.1, 0.2100, 0.250, 0.410, 0.0, 0.35, -0.15, 90.0, 90.0, 90.0],
+        [0.1, 0.0460, 0.046, 0.050, 0.0, 0.1, 0.25, 90.0, 90.0, 90.0],
+        [0.1, 0.0460, 0.046, 0.050, 0.0, -0.1, 0.25, 90.0, 90.0, 90.0],
+        [0.1, 0.0460, 0.023, 0.050, -0.08, -0.605, 0.0, 90.0, 90.0, 90.0],
+        [0.1, 0.0230, 0.023, 0.020, 0.0, -0.606, 0.0, 90.0, 90.0, 90.0],
+        [0.1, 0.0230, 0.046, 0.020, 0.06, -0.605, 0.0, 90.0, 90.0, 90.0],
+    ]
     return shepp_array
 
 
@@ -214,11 +220,7 @@ def _array_to_params(array):
     Converts list to a dictionary.
     """
     # mandatory parameters to define an ellipsoid
-    params_tuple = [
-        'A',
-        'a', 'b', 'c',
-        'x0', 'y0', 'z0',
-        'phi', 'theta', 'psi']
+    params_tuple = ["A", "a", "b", "c", "x0", "y0", "z0", "phi", "theta", "psi"]
 
     array = np.asarray(array)
     out = []

@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "tomoalign"
+version = "0.1.0"
+description = "Rigid body alignment for x-ray tomography data"
+authors = ["Kanupriya Pandey <kpande@lbl.gov>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9, <3.13"
+numpy = "^1.25.1"
+h5py = "^3.9.0"
+scipy = "^1.11.1"
+mpi4py = "^3.1.4"
+scikit-image = "^0.21.0"
+matplotlib = "^3.7.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

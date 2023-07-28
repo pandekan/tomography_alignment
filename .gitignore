@@ -1,0 +1,25 @@
+# vscode files
+.vscode
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# lock file
+*.lock
+
+# jupyter notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# virtualenv
+.venv
+venv/
+ENV/
+
+# packaging
+dist/
+
+# compiled files
+*.so

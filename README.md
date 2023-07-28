@@ -1,12 +1,30 @@
-# tomography_alignment
+# Tomography Alignment
 Rigid body alignment for x-ray tomography data
 
-# compile fortran code as follows
+# Installation
 
-cd src
+To simply install the package `tomoalign` from [pyproject.toml](./pyproject.toml) as an editable package, please do:
 
-gfortran -c ray_wt_grad.f90 vox_wt_grad.f90
+```bash
+pip install -e .
+```
 
-f2py3 -c ray_wt_grad.f90 -m ray_wt_grad
+Alternatively, you can install this package with [poetry](https://github.com/python-poetry/poetry) in a dedicated virtual environment as:
 
-f2py3 -c vox_wt_grad.f90 -m vox_wt_grad
+```bash
+poetry install
+```
+
+To activate this virtual environment simply type `poetry shell` (at repository's root folder) and to deactive the environment `deactivate`.
+
+
+## Fortran code compilation
+
+After installation of the dependencies, this step wraps the relevant fortran code by using the `numpy.f2py` utility. This is done by compiling the sources and building an extension module containing the wrappers.
+
+Assuming you are at the repository's root folder execute this bash file (ignore the warning messages):
+
+```bash
+bash f2py.sh
+```
+

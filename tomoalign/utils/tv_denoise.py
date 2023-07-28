@@ -7,7 +7,7 @@ def tv_norm(im):
     """
     grad_x1 = np.diff(im, axis=0)
     grad_x2 = np.diff(im, axis=1)
-    return np.sqrt(grad_x1[:, :-1]**2 + grad_x2[:-1, :]**2).sum()
+    return np.sqrt(grad_x1[:, :-1] ** 2 + grad_x2[:-1, :] ** 2).sum()
 
 
 def tv_norm_anisotropic(im):
@@ -18,7 +18,7 @@ def tv_norm_anisotropic(im):
 
 
 def div(grad):
-    """ Compute divergence of image gradient
+    """Compute divergence of image gradient
     Courtesy : E. Gouillart - https://github.com/emmanuelle/tomo-tv/
     """
     res = np.zeros(grad.shape[1:], dtype=grad.dtype)
@@ -48,19 +48,20 @@ def gradient(img):
         array img
     Courtesy : E. Gouillart - https://github.com/emmanuelle/tomo-tv/
     """
-    shape = [img.ndim, ] + list(img.shape)
+    shape = [
+        img.ndim,
+    ] + list(img.shape)
     gradient = np.zeros(shape, dtype=img.dtype)
-    
+
     slice_all = [slice(None, -1)]
     for d in range(img.ndim):
         gradient[d][tuple(slice_all)] = np.diff(img, axis=d)
         slice_all.insert(d, slice(None))
-        
+
     return gradient
 
 
 def tv_norm_3d(x):
-    
     return np.linalg.norm(gradient(x))
 
 
@@ -69,7 +70,7 @@ def _projector_on_dual(grad):
     modifies in place the gradient to project it
     on the L2 unit ball
     """
-    norm = np.maximum(np.sqrt(np.sum(grad**2, 0)), 1.)
+    norm = np.maximum(np.sqrt(np.sum(grad**2, 0)), 1.0)
     for grad_comp in grad:
         grad_comp /= norm
     return grad
@@ -95,8 +96,7 @@ def dual_gap(im, new, gap, weight):
     return 0.5 / im_norm * dual_gap
 
 
-def denoise_fista(im, weight=50, niter=200, eps=1.e-5, check_gap_frequency=3):
-
+def denoise_fista(im, weight=50, niter=200, eps=1.0e-5, check_gap_frequency=3):
     """
     Perform total-variation denoising on N-d images
 
@@ -109,7 +109,7 @@ def denoise_fista(im, weight=50, niter=200, eps=1.e-5, check_gap_frequency=3):
     total variation denoising in "Fast gradient-based algorithms for
     constrained total variation image denoising and deblurring problems"
     (2009).
-    
+
     Parameters
     ----------
     im: ndarray of floats (2-d or 3-d)
@@ -135,24 +135,26 @@ def denoise_fista(im, weight=50, niter=200, eps=1.e-5, check_gap_frequency=3):
         denoised image
 
     """
-    #if not im.dtype.kind == 'f':
+    # if not im.dtype.kind == 'f':
     #    im = im.astype(np.float)
-    
-    shape = [im.ndim, ] + list(im.shape)
+
+    shape = [
+        im.ndim,
+    ] + list(im.shape)
     if shape[0] == 3:
         factor = 12.0
     else:
         factor = 8.0
-    
+
     grad_im = np.zeros(shape, dtype=im.dtype)
     grad_aux = np.zeros(shape, dtype=im.dtype)
-    t = 1.
+    t = 1.0
     i = 0
     new = im.copy()
     while i < niter:
         error = weight * div(grad_aux) - im
         grad_tmp = gradient(error)
-        grad_tmp *= 1/(factor * weight)
+        grad_tmp *= 1 / (factor * weight)
         grad_aux += grad_tmp
         grad_tmp = _projector_on_dual(grad_aux)
         t_new = 0.5 * (1 + np.sqrt(1 + 4 * t**2))
